@@ -1,6 +1,6 @@
-import { json, redirect } from "@remix-run/node";
-import { useLoaderData, Form } from "@remix-run/react";
-import { useState } from "react";
+import { json } from "@remix-run/node";
+import { useLoaderData, useFetcher } from "@remix-run/react";
+import { useState, useEffect } from "react";
 import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
@@ -11,61 +11,95 @@ export const loader = async () => {
   return json({ products });
 };
 
-// Action: thêm, sửa, xóa
+// Action: thêm, sửa, xóa — trả về JSON thay vì redirect
 export const action = async ({ request }: any) => {
-  const form = await request.formData();
-  const _action = form.get("_action");
+  try {
+    const form = await request.formData();
+    const _action = String(form.get("_action") ?? "");
 
-  if (_action === "create") {
-    const title = form.get("title") as string;
-    const description = form.get("description") as string;
-    await prisma.product.create({ data: { title, description } });
-  } else if (_action === "update") {
-    const id = Number(form.get("id"));
-    const title = form.get("title") as string;
-    const description = form.get("description") as string;
-    await prisma.product.update({
-      where: { id },
-      data: { title, description },
-    });
-  } else if (_action === "delete") {
-    const id = Number(form.get("id"));
-    await prisma.product.delete({ where: { id } });
+    if (_action === "create") {
+      const title = String(form.get("title") ?? "").trim();
+      const description = String(form.get("description") ?? "").trim();
+      if (!title)
+        return json(
+          { success: false, error: "Title required" },
+          { status: 400 },
+        );
+      await prisma.product.create({ data: { title, description } });
+    } else if (_action === "update") {
+      const id = Number(form.get("id"));
+      const title = String(form.get("title") ?? "").trim();
+      const description = String(form.get("description") ?? "").trim();
+      await prisma.product.update({
+        where: { id },
+        data: { title, description },
+      });
+    } else if (_action === "delete") {
+      const id = Number(form.get("id"));
+      await prisma.product.delete({ where: { id } });
+    }
+
+    // trả về success; client sẽ gọi fetcher.load(...) để reload loader
+    return json({ success: true });
+  } catch (err: any) {
+    console.error("action error:", err);
+    return json({ success: false, error: String(err) }, { status: 500 });
   }
-
-  return redirect("/app/product");
 };
 
 // Component React
 export default function Products() {
-  const { products } = useLoaderData<typeof loader>();
+  const { products: initialProducts } = useLoaderData<typeof loader>();
+  const fetcher = useFetcher();
 
-  // React state để quản lý modal
+  // local state quản lý danh sách (cập nhật từ loader qua fetcher)
+  const [products, setProducts] = useState(initialProducts);
+
+  // modal state
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-
   const openModal = (product: any) => {
     setSelectedProduct(product);
     setIsModalOpen(true);
   };
-
   const closeModal = () => {
     setSelectedProduct(null);
     setIsModalOpen(false);
   };
 
+  // Khi fetcher trả về success (action hoàn thành) -> reload loader cho route hiện tại
+  // Khi fetcher chứa loader data ({ products }) -> cập nhật state products
+  useEffect(() => {
+    const data = fetcher.data as any;
+    if (!data) return;
+
+    // Nếu action trả về success -> gọi load để lấy lại loader data cho route hiện tại
+    // Chỉ gọi khi fetcher chưa đang load để tránh loop
+    if (data.success) {
+      if (fetcher.state !== "loading") {
+        fetcher.load(window.location.pathname);
+      }
+      return;
+    }
+
+    // Nếu fetcher chứa products (khi load loader) -> cập nhật danh sách products
+    if (data.products) {
+      setProducts(data.products);
+    }
+  }, [fetcher.data, fetcher.state]);
+
   return (
     <div style={{ padding: 20 }}>
       <h1>Products</h1>
 
-      {/* Form thêm product */}
-      <Form method="post" style={{ marginBottom: 20 }}>
+      {/* Form thêm product (dùng fetcher.Form để gọi action không redirect) */}
+      <fetcher.Form method="post" style={{ marginBottom: 20 }}>
         <input name="title" placeholder="Title" required />
         <input name="description" placeholder="Description" />
         <button type="submit" name="_action" value="create">
           Add Product
         </button>
-      </Form>
+      </fetcher.Form>
 
       {/* Danh sách product */}
       <ul>
@@ -80,21 +114,31 @@ export default function Products() {
             </span>
 
             {/* Form sửa nhanh trong list */}
-            <Form method="post" style={{ display: "inline" }}>
+            <fetcher.Form method="post" style={{ display: "inline" }}>
               <input type="hidden" name="id" value={p.id} />
               <input name="title" defaultValue={p.title} />
               <input name="description" defaultValue={p.description || ""} />
               <button type="submit" name="_action" value="update">
                 ✏️
               </button>
-            </Form>
+            </fetcher.Form>
 
-            <Form method="post" style={{ display: "inline", marginLeft: 10 }}>
+            <fetcher.Form
+              method="post"
+              style={{ display: "inline", marginLeft: 10 }}
+            >
               <input type="hidden" name="id" value={p.id} />
-              <button type="submit" name="_action" value="delete">
+              <button
+                type="submit"
+                name="_action"
+                value="delete"
+                onClick={(e) => {
+                  if (!confirm("Delete this product?")) e.preventDefault();
+                }}
+              >
                 🗑️
               </button>
-            </Form>
+            </fetcher.Form>
           </li>
         ))}
       </ul>
@@ -123,7 +167,7 @@ export default function Products() {
             <p>{selectedProduct.description}</p>
 
             {/* Form update trong modal */}
-            <Form method="post">
+            <fetcher.Form method="post">
               <input type="hidden" name="id" value={selectedProduct.id} />
               <input name="title" defaultValue={selectedProduct.title} />
               <input
@@ -140,15 +184,22 @@ export default function Products() {
               >
                 Close
               </button>
-            </Form>
+            </fetcher.Form>
 
             {/* Form xóa trong modal */}
-            <Form method="post" style={{ marginTop: 10 }}>
+            <fetcher.Form method="post" style={{ marginTop: 10 }}>
               <input type="hidden" name="id" value={selectedProduct.id} />
-              <button type="submit" name="_action" value="delete">
+              <button
+                type="submit"
+                name="_action"
+                value="delete"
+                onClick={(e) => {
+                  if (!confirm("Delete this product?")) e.preventDefault();
+                }}
+              >
                 Delete
               </button>
-            </Form>
+            </fetcher.Form>
           </div>
         </div>
       )}
