@@ -5,13 +5,11 @@ import { PrismaClient } from "@prisma/client";
 
 const prisma = new PrismaClient();
 
-// Loader: lấy danh sách product
 export const loader = async () => {
   const products = await prisma.product.findMany({ orderBy: { id: "asc" } });
   return json({ products });
 };
 
-// Action: thêm, sửa, xóa — trả về JSON thay vì redirect
 export const action = async ({ request }: any) => {
   try {
     const form = await request.formData();
@@ -39,7 +37,6 @@ export const action = async ({ request }: any) => {
       await prisma.product.delete({ where: { id } });
     }
 
-    // trả về success; client sẽ gọi fetcher.load(...) để reload loader
     return json({ success: true });
   } catch (err: any) {
     console.error("action error:", err);
@@ -47,15 +44,12 @@ export const action = async ({ request }: any) => {
   }
 };
 
-// Component React
 export default function Products() {
   const { products: initialProducts } = useLoaderData<typeof loader>();
   const fetcher = useFetcher();
 
-  // local state quản lý danh sách (cập nhật từ loader qua fetcher)
   const [products, setProducts] = useState(initialProducts);
 
-  // modal state
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const openModal = (product: any) => {
@@ -67,8 +61,6 @@ export default function Products() {
     setIsModalOpen(false);
   };
 
-  // Khi fetcher trả về success (action hoàn thành) -> reload loader cho route hiện tại
-  // Khi fetcher chứa loader data ({ products }) -> cập nhật state products
   useEffect(() => {
     const data = fetcher.data as any;
     if (!data) return;
@@ -92,7 +84,6 @@ export default function Products() {
     <div style={{ padding: 20 }}>
       <h1>Products</h1>
 
-      {/* Form thêm product (dùng fetcher.Form để gọi action không redirect) */}
       <fetcher.Form method="post" style={{ marginBottom: 20 }}>
         <input name="title" placeholder="Title" required />
         <input name="description" placeholder="Description" />
@@ -101,11 +92,9 @@ export default function Products() {
         </button>
       </fetcher.Form>
 
-      {/* Danh sách product */}
       <ul>
         {products.map((p: any) => (
           <li key={p.id} style={{ marginBottom: 10 }}>
-            {/* Click vào tên product mở modal */}
             <span
               onClick={() => openModal(p)}
               style={{ cursor: "pointer", fontWeight: "bold", marginRight: 10 }}
@@ -113,7 +102,6 @@ export default function Products() {
               {p.title}
             </span>
 
-            {/* Form sửa nhanh trong list */}
             <fetcher.Form method="post" style={{ display: "inline" }}>
               <input type="hidden" name="id" value={p.id} />
               <input name="title" defaultValue={p.title} />
@@ -143,7 +131,6 @@ export default function Products() {
         ))}
       </ul>
 
-      {/* Modal hiển thị chi tiết product */}
       {isModalOpen && selectedProduct && (
         <div
           style={{
@@ -166,7 +153,6 @@ export default function Products() {
             <h2>{selectedProduct.title}</h2>
             <p>{selectedProduct.description}</p>
 
-            {/* Form update trong modal */}
             <fetcher.Form method="post">
               <input type="hidden" name="id" value={selectedProduct.id} />
               <input name="title" defaultValue={selectedProduct.title} />
@@ -186,7 +172,6 @@ export default function Products() {
               </button>
             </fetcher.Form>
 
-            {/* Form xóa trong modal */}
             <fetcher.Form method="post" style={{ marginTop: 10 }}>
               <input type="hidden" name="id" value={selectedProduct.id} />
               <button
