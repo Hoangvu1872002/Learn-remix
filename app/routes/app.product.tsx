@@ -1,5 +1,5 @@
 import { json } from "@remix-run/node";
-import { useLoaderData, useFetcher } from "@remix-run/react";
+import { useLoaderData, useFetcher, Link } from "@remix-run/react";
 import { useState, useEffect } from "react";
 import { PrismaClient } from "@prisma/client";
 

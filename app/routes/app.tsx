@@ -25,6 +25,8 @@ export default function App() {
           Home
         </Link>
         <Link to="/app/product">Products</Link>
+        <Link to="/app/cloneui">Clone UI</Link>
+        <Link to="/app/graphQL">GraphQL</Link>
         <Link to="/app/additional">Additional page</Link>
       </NavMenu>
       <Outlet />
